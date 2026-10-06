@@ -31,7 +31,7 @@ PACK_BYTES = 900 * 1000 * 1000
 MAX_FILE = 95 * 1024 * 1024
 COMMIT_BYTES = 250 * 1000 * 1000      # push בכמה commits — push ענק נכשל יותר
 AUDIO_EXT = {"mp3", "m4a"}
-EXCLUDE_TOPICS = ("12 -", "13 -", "שירים")   # מוזיקה — לא בשלב הזה (החלטת המשתמש)
+EXCLUDE_TOPICS = ()   # מוזיקה נוספה 2026-10-06 (בקשת המשתמש) — וידאו עדיין לא
 
 
 def log(*a):
