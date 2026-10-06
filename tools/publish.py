@@ -241,29 +241,111 @@ def push_repo(m, repo):
 
 
 # ---------- catalog ----------
+PALETTE = ["#b8862b", "#2f6fb3", "#b5523b", "#3f8f5a", "#7a55a8", "#c98a1c", "#2a8f99", "#b0487a"]
+
+
 def clean_title(name):
-    t = name.rsplit(".", 1)[0].replace("_", " ")
+    import layout
+    t = layout.fix_chars(name).rsplit(".", 1)[0].replace("_", " ")
     return " ".join(t.split())
 
 
+def series_key(title):
+    """הכותרת עד " - " הראשון, בלי מספרי פרקים — מועמד לשם סדרה."""
+    import re
+    for sep in (" - ", " – ", "- "):
+        if sep in title:
+            k = re.sub(r"(פרק|חלק|שיעור)?\s*#?\d+", " ", title.split(sep, 1)[0])
+            k = " ".join(k.split()).strip(" #.-–")
+            if 4 <= len(k) <= 60:
+                return k
+    return ""
+
+
+def drop_near_dups(items, weak=("misc", "other", "compil")):
+    """אותו שם + אותו אורך (±3%) = אותו שיעור שהועתק לכמה תיקיות. משאירים אחד:
+    בנושא ספציפי (לא "שונות"/רצפים) ובקובץ הגדול. ב-2026-10-06 זה הוריד 646 כפילויות
+    מקטלוג השיעורים ו-96 מואהבת — הקבצים נשארים ב-GitHub, רק לא מוצגים פעמיים."""
+    import re
+    def norm(t):
+        return re.sub(r"\s*\(\d+\)\s*$", "", t).strip()
+    rank = lambda x: (x["c"] in weak, -x["z"])
+    keep, seen = [], {}
+    for x in sorted(items, key=rank):
+        k = norm(x["t"])
+        if x["d"] and any(abs(x["d"] - d) <= max(5, 0.03 * d) for d in seen.get(k, ())):
+            continue
+        seen.setdefault(k, []).append(x["d"])
+        keep.append(x)
+    keep.sort(key=lambda x: x["i"])
+    return keep
+
+
 def catalog(m):
+    """הנושאים והקבוצות נקבעים ב-layout.py — אפשר לשנות ולהריץ שוב בלי להעלות קבצים."""
+    import collections
+    import layout
     items = []
     for f in m["files"]:
         if not f.get("pushed") or f.get("skip"):
             continue
-        parts = f["rel"].split("\\")
+        topic, group, letter = layout.place(f["rel"])
         items.append({
             "i": f["id"],
-            "t": clean_title(parts[-1]),
-            "c": parts[0],
-            "s": " / ".join(parts[1:-1]),
+            "t": clean_title(os.path.basename(f["rel"])),
+            "c": topic,
+            "s": group,
             "u": "https://%s.github.io/%s/%s" % (OWNER, f["repo"], f["path"]),
             "d": f.get("dur", 0),
             "z": f["size"],
+            "_l": letter,
         })
+    size = collections.Counter((x["c"], x["s"]) for x in items)
+    # קבוצה כללית (בלי שם / "שיעורים כלליים"): סדרה שחוזרת 3+ פעמים מקבלת קבוצה משלה
+    generic = ("", "שיעורים כלליים")
+    sk = collections.Counter((x["c"], series_key(x["t"])) for x in items if x["s"] in generic)
+    # קבוצת ענק (קרליבך, פוטולסקי...) → טווחי אותיות של עד ~100 פריטים ("A–D", "א–ת"),
+    # לפי תיקיות "א-ת - X" שבמקור. 30 קבוצות של אות בודדת היו מבלבלות יותר מעוזרות.
+    def lkey(l):
+        return (0 if l[:1].isascii() else 1, l)
+    bucket = {}
+    letters = collections.defaultdict(collections.Counter)
+    for x in items:
+        if size[(x["c"], x["s"])] > layout.BIG and x["_l"]:
+            letters[(x["c"], x["s"])][x["_l"]] += 1
+    for g, cnt in letters.items():
+        packs, cur, n = [], [], 0
+        for l in sorted(cnt, key=lkey):
+            if cur and (n + cnt[l] > 100 or lkey(l)[0] != lkey(cur[0])[0]):
+                packs.append(cur); cur, n = [], 0
+            cur.append(l); n += cnt[l]
+        if cur:
+            packs.append(cur)
+        for p in packs:
+            label = p[0] if len(p) == 1 else "%s–%s" % (p[0], p[-1])
+            for l in p:
+                bucket[(g, l)] = label
+    for x in items:
+        g = (x["c"], x["s"])
+        if (g, x["_l"]) in bucket:
+            x["s"] = (x["s"] + " · " if x["s"] else "") + bucket[(g, x["_l"])]
+        elif x["s"] in generic:
+            k = series_key(x["t"])
+            if k and sk[(x["c"], k)] >= 3 and k not in layout.NAMES[x["c"]]:
+                x["s"] = k
+        del x["_l"]
+    before = len(items)
+    items = drop_near_dups(items)
+    if before != len(items):
+        log("catalog: %d כפילויות הוסתרו" % (before - len(items)))
+    used = {x["c"] for x in items}
+    meta = [dict(id=t[0], e=t[1], n=t[2], d=t[3], a=PALETTE[k % len(PALETTE)], g=t[4])
+            for k, t in enumerate(layout.TOPICS) if t[0] in used]
     out = os.path.join(CATALOG_DIR, "data.js")
     with open(out, "w", encoding="utf-8") as fh:
-        fh.write("// נוצר ע\"י tools/publish.py catalog - אל תערכו ידנית\nwindow.LESSONS=")
+        fh.write("// נוצר ע\"י tools/publish.py catalog - אל תערכו ידנית\nwindow.TOPICS=")
+        json.dump(meta, fh, ensure_ascii=False, separators=(",", ":"))
+        fh.write(";\nwindow.LESSONS=")
         json.dump(items, fh, ensure_ascii=False, separators=(",", ":"))
         fh.write(";\nwindow.LESSONS_UPDATED=%s;\n" % json.dumps(time.strftime("%d/%m/%Y")))
     log("catalog: %d שיעורים ב-data.js" % len(items))
@@ -276,7 +358,7 @@ def publish_catalog(n):
     if not os.path.isdir(os.path.join(d, ".git")):
         return
     git(d, "add", "index.html", "data.js", "README.md", ".nojekyll", ".gitignore",
-        "tools/publish.py", "tools/manifest.json", "HANDOFF.md")
+        "tools/publish.py", "tools/layout.py", "tools/manifest.json", "HANDOFF.md")
     if not git(d, "diff", "--cached", "--name-only").strip():
         return
     git(d, "commit", "-q", "-m", "catalog: %d lessons" % n)

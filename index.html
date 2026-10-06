@@ -189,12 +189,12 @@ footer{text-align:center;color:var(--muted);font-size:.85rem;padding:30px 16px}
 (function(){
 "use strict";
 var L = window.LESSONS || [];
-var ICONS = {"01":"🕍","02":"🌟","03":"🙏","04":"😊","05":"🧠","06":"🧘","07":"💑","08":"🌸","09":"🚀","10":"📖","11":"🗣️","14":"🇮🇱","15":"💪","16":"⚡","17":"✨","18":"👨‍👩‍👧","19":"🦁","99":"📂","12":"🎸","13":"🎻","שירים יהודים":"🎤"};
-// מוזיקה מוצגת באזור נפרד בעמוד הבית ונספרת כ"שירים" ולא כ"שיעורים"
-function isMusic(c){return /^1[23]\s*-/.test(c)||c.indexOf("שירים")===0;}
+// הנושאים (שם, אימוג'י, תיאור, צבע, קבוצה) מגיעים מ-data.js — נקבעים ב-tools/topics.py
+var TM={};(window.TOPICS||[]).forEach(function(t,k){t.k=k;TM[t.id]=t;});
+function isMusic(c){return (TM[c]||{}).g==="music";}
 function unit(c){return isMusic(c)?"שירים":"שיעורים";}
-function icon(t){var n=topicNum(t.c);return ICONS[n]||ICONS[t.c]||"🎧";}
-var TINTS = ["#f3ead8","#e7eef8","#f6e4df","#e6f1e8","#efe6f5","#fbefd6","#e2f0f1","#f5e6ee"];
+function icon(t){return (TM[t.c]||{}).e||"🎧";}
+function tint(t){return ((TM[t.c]||{}).a||"#b8862b")+"22";}
 
 var store = {
   get:function(k,d){try{var v=localStorage.getItem(k);return v==null?d:JSON.parse(v);}catch(e){return d;}},
@@ -207,8 +207,7 @@ function $(id){return document.getElementById(id);}
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
 function fmt(s){s=Math.max(0,Math.round(s||0));var h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return (h?h+":"+(m<10?"0":""):"")+m+":"+(x<10?"0":"")+x;}
 function hrs(s){if(!s)return "";var h=Math.floor(s/3600),m=Math.round(s%3600/60);return h?h+" שע׳"+(m?" "+m+" דק׳":""):m+" דק׳";}
-function topicName(c){return c.replace(/^\d+\s*-\s*/,"");}
-function topicNum(c){var m=/^(\d+)/.exec(c);return m?m[1]:"";}
+function topicName(c){return (TM[c]||{}).n||c;}
 function hi(text,q){if(!q)return esc(text);var t=esc(text),r=q.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");return t.replace(new RegExp("("+esc(r)+")","gi"),"<mark>$1</mark>");}
 
 // ----- topics -----
@@ -219,7 +218,8 @@ L.forEach(function(x){
   var t=tmap[x.c];t.items.push(x);t.dur+=x.d||0;
   var top=(x.s||"").split(" / ")[0];if(top)t.subs[top]=1;
 });
-topics.sort(function(a,b){return a.c.localeCompare(b.c,"he",{numeric:true});});
+function ord(c){return TM[c]?TM[c].k:99;}   // k=0 הוא הנושא הראשון — לא "חסר"
+topics.sort(function(a,b){return ord(a.c)-ord(b.c);});
 var total=0;L.forEach(function(x){total+=x.d||0;});
 var nSongs=L.filter(function(x){return isMusic(x.c);}).length;
 $("sLessons").textContent=(L.length-nSongs).toLocaleString("he-IL");
@@ -245,32 +245,35 @@ function lessonRow(x,q,showTopic){
 function renderHome(){
   queue=[];
   function card(t){
-    var n=topicNum(t.c),k=topics.indexOf(t);
-    return '<a class="topic" href="#t='+encodeURIComponent(n||t.c)+'" style="--tint:'+TINTS[k%TINTS.length]+'">'+
+    return '<a class="topic" href="#t='+encodeURIComponent(t.c)+'" style="--tint:'+tint(t)+'">'+
       '<div class="em">'+icon(t)+'</div><div><h3>'+esc(topicName(t.c))+'</h3>'+
       '<div class="meta">'+t.items.length+' '+unit(t.c)+(t.dur?' · '+hrs(t.dur):'')+'</div>'+
-      '<div class="subs">'+esc(Object.keys(t.subs).slice(0,8).join(" · "))+'</div></div></a>';
+      '<div class="subs">'+esc((TM[t.c]||{}).d||"")+'</div></div></a>';
   }
-  var les=topics.filter(function(t){return !isMusic(t.c);}),mus=topics.filter(function(t){return isMusic(t.c);});
-  view.innerHTML=(mus.length?'<h2 class="sec-h">📚 שיעורים והרצאות</h2>':'')+
-    '<div class="grid">'+les.map(card).join("")+'</div>'+
-    (mus.length?'<h2 class="sec-h m2">🎵 מוזיקה</h2><div class="grid">'+mus.map(card).join("")+'</div>':'');
+  var G=[["lessons","📚 שיעורים והרצאות"],["music","🎵 מוזיקה"]];
+  view.innerHTML=G.map(function(g,k){
+    var ts=topics.filter(function(t){return ((TM[t.c]||{}).g||"lessons")===g[0];});
+    return ts.length?'<h2 class="sec-h'+(k?' m2':'')+'">'+g[1]+'</h2><div class="grid">'+ts.map(card).join("")+'</div>':'';
+  }).join("");
 }
 
 function renderTopic(key){
-  var t=topics.filter(function(t){return topicNum(t.c)===key||t.c===key;})[0];
+  // קישורים ישנים (לפני הסידור מחדש) היו לפי מספר תיקייה — #t=05
+  var OLD={"01":"torah","02":"positive","03":"gratitude","04":"happy","05":"psych","06":"meditation","07":"couple","08":"praise","09":"success","11":"success","12":"carlebach","13":"calm","14":"israel","15":"health","16":"shiri","17":"couple","18":"kids","99":"misc","שירים יהודים":"nigunim"};
+  if(!TM[key]&&OLD[key])key=OLD[key];
+  var t=topics.filter(function(t){return t.c===key;})[0];
   if(!t){renderHome();return;}
-  var k=topics.indexOf(t),n=topicNum(t.c);
+  var k=topics.indexOf(t);
   var groups={},order=[];
-  t.items.forEach(function(x){var g=x.s||"שיעורים כלליים";if(!groups[g]){groups[g]=[];order.push(g);}groups[g].push(x);});
-  order.sort(function(a,b){return a.localeCompare(b,"he",{numeric:true});});
+  t.items.forEach(function(x){var g=x.s||"";if(!groups[g]){groups[g]=[];order.push(g);}groups[g].push(x);});
+  order.sort(function(a,b){return (a==="")-(b==="")||a.localeCompare(b,"he",{numeric:true});});
   queue=[];order.forEach(function(g){groups[g].sort(function(a,b){return a.t.localeCompare(b.t,"he",{numeric:true});});queue=queue.concat(groups[g]);});
   view.innerHTML='<div class="crumbs"><a class="back" href="#">→ כל הנושאים</a></div>'+
-    '<div class="vh" style="--tint:'+TINTS[k%TINTS.length]+'"><div class="em">'+icon(t)+'</div>'+
-    '<div><h2>'+esc(topicName(t.c))+'</h2><div class="meta">'+t.items.length+' '+unit(t.c)+(t.dur?' · '+hrs(t.dur):'')+'</div></div>'+
+    '<div class="vh" style="--tint:'+tint(t)+'"><div class="em">'+icon(t)+'</div>'+
+    '<div><h2>'+esc(topicName(t.c))+'</h2><div class="meta">'+t.items.length+' '+unit(t.c)+(t.dur?' · '+hrs(t.dur):'')+'</div>'+((TM[t.c]||{}).d?'<div class="meta" style="margin-top:2px">'+esc(TM[t.c].d)+'</div>':'')+'</div>'+
     '<button class="playall" id="playAll">▶ נגן הכל</button></div>'+
     order.map(function(g){
-      return '<details class="group"'+(order.length<=3?" open":"")+'><summary><span class="gt">'+esc(g)+'</span><span class="cnt">'+groups[g].length+'</span></summary>'+
+      return '<details class="group"'+(order.length<=3||!g&&order.length===1?" open":"")+'><summary><span class="gt">'+esc(g||(order.length>1?unit(t.c)+" נוספים":"כל ה"+unit(t.c)))+'</span><span class="cnt">'+groups[g].length+'</span></summary>'+
         groups[g].map(function(x){return lessonRow(x,"",false);}).join("")+'</details>';
     }).join("");
   $("playAll").onclick=function(){if(queue.length)play(queue[0]);};
