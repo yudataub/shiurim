@@ -157,6 +157,8 @@ def gh(*args, check=True):
 
 def push_repo(m, repo):
     files = [f for f in m["files"] if f.get("repo") == repo]
+    if m["repos"][repo].get("cleaned"):
+        return   # כבר עלה במלואו והעותק המקומי נמחק
     if not files or not all(f.get("staged") for f in files):
         log("push %s: לא כל הקבצים הועתקו — מדלג" % repo); return
     d = os.path.join(MEDIA, repo)
