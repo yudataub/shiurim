@@ -124,6 +124,10 @@ def stage_one(f):
         os.replace(dst + ".part", dst)
     if not f.get("dur"):
         f["dur"] = probe(dst)
+    if not f["dur"]:
+        # ffprobe לא מצליח לקרוא = גם הדפדפן לא ינגן. בפועל: קובץ ריק, ו-686 מקטעי
+        # סטרימינג בני ~4.6 שניות בלי כותרת אתחול (02\פסיכולוגיה חיובית\קבצים ממוספרים)
+        f["skip"] = "פגום - לא ניתן לנגן"
     f["staged"] = True
     return f
 
@@ -235,7 +239,7 @@ def clean_title(name):
 def catalog(m):
     items = []
     for f in m["files"]:
-        if not f.get("pushed"):
+        if not f.get("pushed") or f.get("skip"):
             continue
         parts = f["rel"].split("\\")
         items.append({
