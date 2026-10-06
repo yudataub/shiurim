@@ -44,6 +44,9 @@ main{max-width:1180px;margin:0 auto;padding:28px 16px}
 .resume .name{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* ===== TOPICS GRID ===== */
+.sec-h{font-family:"Frank Ruhl Libre",serif;font-size:1.5rem;margin:6px 0 14px;display:flex;align-items:center;gap:10px}
+.sec-h:after{content:"";flex:1;height:1px;background:var(--line)}
+.sec-h.m2{margin-top:38px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px}
 .topic{text-decoration:none;background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:20px;text-align:right;box-shadow:var(--shadow);transition:transform .18s,box-shadow .18s,border-color .18s;display:flex;gap:14px;align-items:flex-start;color:var(--ink)}
 .topic:hover{transform:translateY(-3px);border-color:var(--gold2);box-shadow:0 12px 30px rgba(60,40,10,.16)}
@@ -126,9 +129,10 @@ footer{text-align:center;color:var(--muted);font-size:.85rem;padding:30px 16px}
 <header class="hero">
   <div class="kicker">ספריית האודיו</div>
   <h1>קטלוג השיעורים וההרצאות</h1>
-  <p>שיעורים והרצאות לפי נושאים — לחצו על שיעור ושמעו אותו כאן</p>
+  <p>שיעורים, הרצאות ומוזיקה לפי נושאים — לחצו ושמעו כאן</p>
   <div class="stats">
     <div><b id="sLessons">—</b><span>שיעורים</span></div>
+    <div id="sSongsBox" hidden><b id="sSongs">—</b><span>שירים</span></div>
     <div><b id="sHours">—</b><span>שעות האזנה</span></div>
     <div><b id="sTopics">—</b><span>נושאים</span></div>
   </div>
@@ -172,7 +176,11 @@ footer{text-align:center;color:var(--muted);font-size:.85rem;padding:30px 16px}
 (function(){
 "use strict";
 var L = window.LESSONS || [];
-var ICONS = {"01":"🕍","02":"🌟","03":"🙏","04":"😊","05":"🧠","06":"🧘","07":"💑","08":"🌸","09":"🚀","10":"📖","11":"🗣️","14":"🇮🇱","15":"💪","16":"⚡","17":"✨","18":"👨‍👩‍👧","19":"🦁","99":"📂"};
+var ICONS = {"01":"🕍","02":"🌟","03":"🙏","04":"😊","05":"🧠","06":"🧘","07":"💑","08":"🌸","09":"🚀","10":"📖","11":"🗣️","14":"🇮🇱","15":"💪","16":"⚡","17":"✨","18":"👨‍👩‍👧","19":"🦁","99":"📂","12":"🎸","13":"🎻","שירים יהודים":"🎤"};
+// מוזיקה מוצגת באזור נפרד בעמוד הבית ונספרת כ"שירים" ולא כ"שיעורים"
+function isMusic(c){return /^1[23]\s*-/.test(c)||c.indexOf("שירים")===0;}
+function unit(c){return isMusic(c)?"שירים":"שיעורים";}
+function icon(t){var n=topicNum(t.c);return ICONS[n]||ICONS[t.c]||"🎧";}
 var TINTS = ["#f3ead8","#e7eef8","#f6e4df","#e6f1e8","#efe6f5","#fbefd6","#e2f0f1","#f5e6ee"];
 
 var store = {
@@ -200,7 +208,9 @@ L.forEach(function(x){
 });
 topics.sort(function(a,b){return a.c.localeCompare(b.c,"he",{numeric:true});});
 var total=0;L.forEach(function(x){total+=x.d||0;});
-$("sLessons").textContent=L.length.toLocaleString("he-IL");
+var nSongs=L.filter(function(x){return isMusic(x.c);}).length;
+$("sLessons").textContent=(L.length-nSongs).toLocaleString("he-IL");
+if(nSongs){$("sSongs").textContent=nSongs.toLocaleString("he-IL");$("sSongsBox").hidden=false;}
 $("sHours").textContent=Math.round(total/3600).toLocaleString("he-IL");
 $("sTopics").textContent=topics.length;
 $("upd").textContent=window.LESSONS_UPDATED||"";
@@ -221,13 +231,17 @@ function lessonRow(x,q,showTopic){
 
 function renderHome(){
   queue=[];
-  view.innerHTML='<div class="grid">'+topics.map(function(t,k){
-    var n=topicNum(t.c);
+  function card(t){
+    var n=topicNum(t.c),k=topics.indexOf(t);
     return '<a class="topic" href="#t='+encodeURIComponent(n||t.c)+'" style="--tint:'+TINTS[k%TINTS.length]+'">'+
-      '<div class="em">'+(ICONS[n]||"🎧")+'</div><div><h3>'+esc(topicName(t.c))+'</h3>'+
-      '<div class="meta">'+t.items.length+' שיעורים'+(t.dur?' · '+hrs(t.dur):'')+'</div>'+
+      '<div class="em">'+icon(t)+'</div><div><h3>'+esc(topicName(t.c))+'</h3>'+
+      '<div class="meta">'+t.items.length+' '+unit(t.c)+(t.dur?' · '+hrs(t.dur):'')+'</div>'+
       '<div class="subs">'+esc(Object.keys(t.subs).slice(0,8).join(" · "))+'</div></div></a>';
-  }).join("")+'</div>';
+  }
+  var les=topics.filter(function(t){return !isMusic(t.c);}),mus=topics.filter(function(t){return isMusic(t.c);});
+  view.innerHTML=(mus.length?'<h2 class="sec-h">📚 שיעורים והרצאות</h2>':'')+
+    '<div class="grid">'+les.map(card).join("")+'</div>'+
+    (mus.length?'<h2 class="sec-h m2">🎵 מוזיקה</h2><div class="grid">'+mus.map(card).join("")+'</div>':'');
 }
 
 function renderTopic(key){
@@ -239,8 +253,8 @@ function renderTopic(key){
   order.sort(function(a,b){return a.localeCompare(b,"he",{numeric:true});});
   queue=[];order.forEach(function(g){groups[g].sort(function(a,b){return a.t.localeCompare(b.t,"he",{numeric:true});});queue=queue.concat(groups[g]);});
   view.innerHTML='<div class="crumbs"><a class="back" href="#">→ כל הנושאים</a></div>'+
-    '<div class="vh" style="--tint:'+TINTS[k%TINTS.length]+'"><div class="em">'+(ICONS[n]||"🎧")+'</div>'+
-    '<div><h2>'+esc(topicName(t.c))+'</h2><div class="meta">'+t.items.length+' שיעורים'+(t.dur?' · '+hrs(t.dur):'')+'</div></div>'+
+    '<div class="vh" style="--tint:'+TINTS[k%TINTS.length]+'"><div class="em">'+icon(t)+'</div>'+
+    '<div><h2>'+esc(topicName(t.c))+'</h2><div class="meta">'+t.items.length+' '+unit(t.c)+(t.dur?' · '+hrs(t.dur):'')+'</div></div>'+
     '<button class="playall" id="playAll">▶ נגן הכל</button></div>'+
     order.map(function(g){
       return '<details class="group"'+(order.length<=3?" open":"")+'><summary><span class="gt">'+esc(g)+'</span><span class="cnt">'+groups[g].length+'</span></summary>'+
