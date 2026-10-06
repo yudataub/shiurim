@@ -173,8 +173,18 @@ def push_repo(m, repo):
             fh.write('<meta charset="utf-8"><meta http-equiv="refresh" content="0;url=https://%s.github.io/shiurim/">' % OWNER)
     if not st.get("created"):
         if gh("repo", "view", "%s/%s" % (OWNER, repo), check=False).returncode:
-            gh("repo", "create", "%s/%s" % (OWNER, repo), "--public",
-               "--description", "קבצי אודיו לקטלוג השיעורים - https://%s.github.io/shiurim/" % OWNER)
+            # GitHub מגביל קצב יצירת ריפואים ("too many repositories, too quickly") — ממתינים ומנסים שוב
+            for attempt in range(30):
+                r = gh("repo", "create", "%s/%s" % (OWNER, repo), "--public",
+                       "--description", "קבצי אודיו לקטלוג השיעורים - https://%s.github.io/shiurim/" % OWNER, check=False)
+                if r.returncode == 0:
+                    break
+                if "too quickly" not in r.stderr:
+                    raise RuntimeError("gh repo create %s: %s" % (repo, r.stderr.strip()[-300:]))
+                log("  מגבלת קצב של GitHub על יצירת ריפואים — ממתין 10 דקות (%d)" % (attempt + 1))
+                time.sleep(600)
+            else:
+                raise RuntimeError("gh repo create %s: מגבלת קצב לא השתחררה" % repo)
         if "origin" not in git(d, "remote"):
             git(d, "remote", "add", "origin", "https://github.com/%s/%s.git" % (OWNER, repo))
         st["created"] = True; save(m)
