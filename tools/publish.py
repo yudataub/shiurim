@@ -266,7 +266,7 @@ def publish_catalog(n):
     if not os.path.isdir(os.path.join(d, ".git")):
         return
     git(d, "add", "index.html", "data.js", "README.md", ".nojekyll", ".gitignore",
-        "tools/publish.py", "tools/manifest.json")
+        "tools/publish.py", "tools/manifest.json", "HANDOFF.md")
     if not git(d, "diff", "--cached", "--name-only").strip():
         return
     git(d, "commit", "-q", "-m", "catalog: %d lessons" % n)
