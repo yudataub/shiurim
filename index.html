@@ -106,6 +106,14 @@ mark{background:#ffe08a;color:inherit;border-radius:3px;padding:0 1px}
 .pl-side{display:flex;align-items:center;gap:8px;justify-content:flex-end}
 .pl-side button,.pl-side a{background:rgba(255,255,255,.1);border:0;color:#fff;border-radius:20px;padding:6px 12px;font-size:.82rem;text-decoration:none;white-space:nowrap}
 .pl-side button:hover,.pl-side a:hover{background:rgba(255,255,255,.2)}
+.sleepw{position:relative}
+#bSleep.on{background:var(--gold2);color:var(--navy);font-weight:700}
+.sleepm{position:absolute;bottom:calc(100% + 10px);left:50%;transform:translateX(-50%);background:#fff;color:var(--ink);border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.3);padding:6px;display:none;min-width:170px;z-index:5}
+.sleepm.open{display:block}
+.sleepm div{font-size:.78rem;color:var(--muted);padding:6px 10px 4px}
+.sleepm button{display:block;width:100%;text-align:right;background:none!important;color:var(--ink)!important;border-radius:8px!important;padding:8px 10px!important;font-size:.9rem!important}
+.sleepm button:hover{background:#f6efe0!important}
+.sleepm button.sel{font-weight:700;color:var(--accent)!important}
 .bar{grid-column:1/-1;display:flex;align-items:center;gap:10px;direction:ltr;font-size:.78rem;color:#b5c2dc;font-variant-numeric:tabular-nums}
 .bar input{flex:1;accent-color:var(--gold2);height:4px}
 .toast{position:fixed;bottom:130px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:8px 18px;border-radius:20px;font-size:.9rem;opacity:0;transition:opacity .25s;pointer-events:none;z-index:30}
@@ -161,6 +169,11 @@ footer{text-align:center;color:var(--muted);font-size:.85rem;padding:30px 16px}
       <button id="bNext" title="הבא">⏭</button>
     </div>
     <div class="pl-side">
+      <span class="sleepw"><button id="bSleep" title="טיימר שינה — הנגן ייעצר לבד">🌙</button>
+        <span class="sleepm" id="sleepMenu"><div>הנגן ייעצר בעוד…</div>
+          <button data-m="15">15 דקות</button><button data-m="30">30 דקות</button><button data-m="45">45 דקות</button>
+          <button data-m="60">שעה</button><button data-m="90">שעה וחצי</button><button data-m="end">בסוף השיעור הנוכחי</button>
+          <button data-m="0">כיבוי הטיימר</button></span></span>
       <button id="bRate" title="מהירות">1×</button>
       <button id="bShare" title="העתק קישור לשיעור">🔗 קישור</button>
       <a id="bDl" href="#" target="_blank" rel="noopener" title="הורדה">⬇</a>
@@ -350,7 +363,7 @@ audio.addEventListener("timeupdate",function(){
   $("tCur").textContent=fmt(audio.currentTime);$("tDur").textContent=fmt(d);
   if(cur&&Date.now()-lastSave>4000){lastSave=Date.now();pos[cur.i]=Math.floor(audio.currentTime);store.set("shiurim.pos",pos);}
 });
-audio.addEventListener("ended",function(){if(cur){done[cur.i]=1;delete pos[cur.i];store.set("shiurim.done",done);store.set("shiurim.pos",pos);}next();});
+audio.addEventListener("ended",function(){if(cur){done[cur.i]=1;delete pos[cur.i];store.set("shiurim.done",done);store.set("shiurim.pos",pos);}if(sleepEnd){sleepStop();toast("🌙 השיעור הסתיים — לילה טוב");refreshRows();return;}next();});
 $("seek").addEventListener("input",function(){seeking=true;var d=audio.duration||(cur&&cur.d)||0;$("tCur").textContent=fmt(this.value/1000*d);});
 $("seek").addEventListener("change",function(){var d=audio.duration||(cur&&cur.d)||0;if(d)audio.currentTime=this.value/1000*d;seeking=false;});
 document.addEventListener("keydown",function(e){
@@ -358,6 +371,44 @@ document.addEventListener("keydown",function(e){
   if(e.code==="Space"){e.preventDefault();toggle();}
   else if(e.key==="ArrowLeft")skip(15);else if(e.key==="ArrowRight")skip(-15);
 });
+
+// ----- טיימר שינה -----
+// עוצר את הנגן אחרי זמן שנבחר (או בסוף השיעור), עם ירידת עוצמה הדרגתית ב-10 השניות האחרונות.
+// סופר זמן שעון רגיל (גם בהשהיה), כמו באפליקציות שמע מקובלות.
+var sleepAt=0,sleepEnd=false,sleepTick=null,FADE=10;
+function sleepLabel(){
+  var b=$("bSleep");
+  if(sleepEnd){b.textContent="🌙 סוף שיעור";b.classList.add("on");return;}
+  if(!sleepAt){b.textContent="🌙";b.classList.remove("on");return;}
+  b.textContent="🌙 "+fmt((sleepAt-Date.now())/1000);b.classList.add("on");
+}
+function sleepStop(){
+  clearInterval(sleepTick);sleepTick=null;sleepAt=0;sleepEnd=false;audio.volume=1;sleepLabel();
+  Array.prototype.forEach.call(document.querySelectorAll("#sleepMenu button"),function(x){x.classList.remove("sel");});
+}
+function sleepFire(){audio.pause();sleepStop();toast("🌙 הנגן נעצר — לילה טוב");}
+function sleepSet(v){
+  sleepStop();
+  if(v==="0")return;
+  if(v==="end"){sleepEnd=true;}
+  else{
+    sleepAt=Date.now()+(+v)*60000;
+    sleepTick=setInterval(function(){
+      var left=(sleepAt-Date.now())/1000;
+      if(left<=0){sleepFire();return;}
+      audio.volume=left<FADE?Math.max(0,left/FADE):1;
+      sleepLabel();
+    },500);
+  }
+  var btn=document.querySelector('#sleepMenu button[data-m="'+v+'"]');if(btn)btn.classList.add("sel");
+  sleepLabel();toast(v==="end"?"🌙 הנגן ייעצר בסוף השיעור":"🌙 הנגן ייעצר בעוד "+v+" דקות");
+}
+$("bSleep").onclick=function(e){e.stopPropagation();$("sleepMenu").classList.toggle("open");};
+$("sleepMenu").addEventListener("click",function(e){
+  var b=e.target.closest("button");if(!b)return;e.stopPropagation();
+  $("sleepMenu").classList.remove("open");sleepSet(b.dataset.m);
+});
+document.addEventListener("click",function(){$("sleepMenu").classList.remove("open");});
 
 var tt;function toast(s){var t=$("toast");t.textContent=s;t.classList.add("on");clearTimeout(tt);tt=setTimeout(function(){t.classList.remove("on");},2400);}
 
