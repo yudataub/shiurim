@@ -349,7 +349,51 @@ def catalog(m):
         json.dump(items, fh, ensure_ascii=False, separators=(",", ":"))
         fh.write(";\nwindow.LESSONS_UPDATED=%s;\n" % json.dumps(time.strftime("%d/%m/%Y")))
     log("catalog: %d שיעורים ב-data.js" % len(items))
+    videos()
     publish_catalog(len(items))
+
+
+# ---------- videos ----------
+DRIVE_DB = r"C:\shiurim-audio\driveindex\drive.db"
+ROOT_FOLDER_ID = "13knIy4kTKDY7lyIwFjqki5Uleg9Ja3PF"   # "אייר" בגוגל דרייב
+
+
+def videos():
+    """סרטונים לא עולים ל-GitHub (92GB) — הקטלוג מקשר לכל אחד בדרייב.
+    המזהים מגיעים מאינדקס הדרייב (driveindex/drive.db, נבנה מ-drive_index.gs).
+    הנושא והקבוצה נקבעים ב-layout.py — אותו סידור כמו של האודיו."""
+    import sqlite3, collections
+    import layout
+    if not os.path.exists(DRIVE_DB):
+        log("videos: אין drive.db — מדלג"); return 0
+    con = sqlite3.connect(DRIVE_DB)
+    row = con.execute("SELECT path FROM files WHERE id = ?", (ROOT_FOLDER_ID,)).fetchone()
+    if not row:
+        log("videos: תיקיית השורש לא באינדקס עדיין — מדלג"); return 0
+    base = row[0] + "/"
+    rows = con.execute("SELECT id, name, size, path FROM files WHERE mime LIKE 'video/%' AND path LIKE ?",
+                       (base.replace("%", "") + "%",)).fetchall()
+    items = []
+    for fid, name, size, path in rows:
+        rel = path[len(base):].replace("/", "\\")
+        topic, group, letter = layout.place(rel)
+        items.append({"v": fid, "t": clean_title(name), "c": topic, "s": group, "z": size, "_l": letter})
+    # כפילויות (אותו שם + אותו גודל) — מציגים פעם אחת
+    seen, uniq = set(), []
+    for x in sorted(items, key=lambda x: (x["c"] == "misc", x["t"])):
+        k = (x["t"], x["z"])
+        if k in seen:
+            continue
+        seen.add(k); uniq.append(x)
+    for x in uniq:
+        del x["_l"]
+    out = os.path.join(CATALOG_DIR, "videos.js")
+    with open(out, "w", encoding="utf-8") as fh:
+        fh.write("// נוצר ע\"י tools/publish.py catalog - סרטונים בגוגל דרייב\nwindow.VIDEOS=")
+        json.dump(uniq, fh, ensure_ascii=False, separators=(",", ":"))
+        fh.write(";\n")
+    log("videos: %d סרטונים (%d כפילויות הוסתרו)" % (len(uniq), len(items) - len(uniq)))
+    return len(uniq)
 
 
 def publish_catalog(n):
@@ -357,7 +401,7 @@ def publish_catalog(n):
     d = CATALOG_DIR
     if not os.path.isdir(os.path.join(d, ".git")):
         return
-    git(d, "add", "index.html", "data.js", "README.md", ".nojekyll", ".gitignore",
+    git(d, "add", "index.html", "data.js", "videos.js", "README.md", ".nojekyll", ".gitignore",
         "tools/publish.py", "tools/layout.py", "tools/manifest.json", "HANDOFF.md")
     if not git(d, "diff", "--cached", "--name-only").strip():
         return
